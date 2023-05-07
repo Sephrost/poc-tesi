@@ -1,0 +1,5 @@
+
+#define CACHE_HIT_TRESHOLD 80
+#define ARRAY1_SIZE 16
+#define TRIES 1000
+
