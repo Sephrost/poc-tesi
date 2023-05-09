@@ -18,19 +18,12 @@
 
 
 int main(int argc, char **argv){
-  // declare a string 
   char* secret = "Skiddadle skiddodle";
-  int size = strlen(secret);
-  printf("starting victim\n");
-  
-  // make a child process to run the spectre attack
-  if(fork() == 0){
-    // pass the secret address to the child process an its length
-    printf("starting attacker\n");
-    // make an array called args with the address of secret and its length
-    char *args[] = {secret, "16", NULL};
-    /* print args; */
+	char size[3];
+	snprintf(size, 3, "%d", strlen(secret));
 
+  if(fork() == 0){
+    char *args[] = {secret, size , NULL};
     execv("attacker", args);
   }else{
     // wait for the child process to finish
