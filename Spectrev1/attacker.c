@@ -15,7 +15,7 @@
 #define L1_CACHE_LINE_SIZE 64
 #endif
 
-#define CACHE_HIT_THRESHOLD 200
+#define CACHE_HIT_THRESHOLD 80
 #define ARRAY1_SIZE 16
 #define TRIES 1000
 
@@ -37,13 +37,49 @@ uint8_t array2[256 * 512];
 int results[256];
 uint8_t temp = 0; /* To not optimize out victim_function() */
 
-void victim_function(size_t x)
+#ifdef LINUX_KERNEL_MITIGATION
+/* From https://github.com/torvalds/linux/blob/cb6416592bc2a8b731dabcec0d63cda270764fc6/arch/x86/include/asm/barrier.h#L27 */
+/**
+ * array_index_mask_nospec() - generate a mask that is ~0UL when the
+ * 	bounds check succeeds and 0 otherwise
+ * @index: array element index
+ * @size: number of elements in array
+ *
+ * Returns:
+ *     0 - (index < size)
+ */
+static inline unsigned long array_index_mask_nospec(unsigned long index,
+		unsigned long size)
 {
-	if (x < array1_size)
-	{
-		temp &= array2[array1[x] * 512];
-	}
+	unsigned long mask;
+
+	__asm__ __volatile__ ("cmp %1,%2; sbb %0,%0;"
+			:"=r" (mask)
+			:"g"(size),"r" (index)
+			:"cc");
+	return mask;
 }
+#endif
+
+void victim_function(size_t x) {
+  if (x < array1_size) {
+#ifdef INTEL_MITIGATION
+		/*
+		 * According to Intel et al, the best way to mitigate this is to 
+		 * add a serializing instruction after the boundary check to force
+		 * the retirement of previous instructions before proceeding to 
+		 * the read.
+		 * See https://newsroom.intel.com/wp-content/uploads/sites/11/2018/01/Intel-Analysis-of-Speculative-Execution-Side-Channels.pdf
+		 */
+		_mm_lfence();
+#endif
+#ifdef LINUX_KERNEL_MITIGATION
+    x &= array_index_mask_nospec(x, array1_size);
+#endif
+    temp &= array2[array1[x] * 512];
+  }
+}
+
 
 static inline uint8_t get_max_value()
 {
